@@ -10,6 +10,7 @@ from pdfrw import PdfReader, PdfWriter, PdfDict
 from blockchain_proofs import ChainPointV2
 from blockchain_certificates import pdf_utils
 from blockchain_certificates import publish_hash
+from blockchain_certificates import cred_protocol
 
 
 '''
@@ -25,7 +26,7 @@ def insert_proof_to_certificates(conf, cp, txid, cert_files):
         pdf.Info.update(metadata)
         PdfWriter().write(val, pdf)
         # print progress
-        print('.', end="", flush=True)
+        # print('.', end="", flush=True)
 
 
 '''
@@ -61,7 +62,7 @@ def load_config():
     p.add_argument('-u', '--full_node_rpc_user', type=str, help='the rpc user as specified in the node\'s configuration')
     p.add_argument('-t', '--testnet', action='store_true', help='specify if testnet or mainnet will be used')
     p.add_argument('-f', '--tx_fee_per_byte', type=int, default=100, help='the fee per transaction byte in satoshis')
-    p.add_argument('-p', '--hash_prefix', type=str, help='prepend the hash that we wish to issue with this hexadecimal')
+    p.add_argument('-p', '--issuer_identifier', type=str, default='        ', help='optional 8 bytes identifier that represents the issuer intented to go on the blockchain')
     args, _ = p.parse_known_args()
     return args
 
@@ -72,6 +73,10 @@ def main():
         sys.exit(1)
 
     conf = load_config()
+
+    # check if issuance address has not been revoked!
+    # TODO: REVOKE ADDRESS CMD
+
     pdf_utils.populate_pdf_certificates(conf)
 
     # get certificate file list here (to ensure it is identical to both
@@ -81,7 +86,11 @@ def main():
 
     cert_hashes = pdf_utils.hash_certificates(cert_files)
     cp = prepare_chainpoint_tree(cert_hashes)
-    txid = publish_hash.issue_hash(conf, True, cp.get_merkle_root())
+
+    # create OP_RETURN in hex
+    op_return_hex = cred_protocol.issue_cmd(conf.issuer_identifier,
+                                            cp.get_merkle_root())
+    txid = publish_hash.issue_op_return(conf, op_return_hex)
     insert_proof_to_certificates(conf, cp, txid, cert_files)
     print('\nTx hash: {}'.format(txid))
 
